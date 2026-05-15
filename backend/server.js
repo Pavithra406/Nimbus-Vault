@@ -16,7 +16,10 @@ const adminController = require('./controllers/admin.controller');
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+    origin: 'https://nimbus-vault-nine.vercel.app',
+    credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
