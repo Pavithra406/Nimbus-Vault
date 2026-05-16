@@ -1,90 +1,65 @@
+const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
-const mysql = require('mysql2/promise');
 require('dotenv').config();
 
-const dbConfig = {
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
-    connectTimeout: 10000,
-    ssl: {
-        rejectUnauthorized: false
-    }
-};
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+});
 
-const pool = mysql.createPool(dbConfig);
-
-const ADMIN_EMAIL = 'pavithrathangaduraitr@gmail.com';
-const ADMIN_PASSWORD = 'pavi1107';
-const ADMIN_NAME = 'Pavithra Admin';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@example.com';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'changeme';
+const ADMIN_NAME = process.env.ADMIN_NAME || 'Admin';
 
 const initDB = async () => {
     try {
-
-        const createUsersQuery = `
+        await pool.query(`
             CREATE TABLE IF NOT EXISTS Users (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
                 name VARCHAR(255) NOT NULL,
                 email VARCHAR(255) UNIQUE NOT NULL,
                 password VARCHAR(255) NOT NULL,
-                is_admin TINYINT(1) DEFAULT 0,
+                is_admin BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-        `;
+        `);
 
-        const createFilesQuery = `
+        await pool.query(`
             CREATE TABLE IF NOT EXISTS Files (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
+                id SERIAL PRIMARY KEY,
+                user_id INT NOT NULL REFERENCES Users(id) ON DELETE CASCADE,
                 filename VARCHAR(255) NOT NULL,
                 file_size INT NOT NULL,
                 upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 aws_url VARCHAR(1000),
                 gcp_url VARCHAR(1000),
-                firebase_url VARCHAR(1000),
-                FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE
+                firebase_url VARCHAR(1000)
             );
-        `;
+        `);
 
-        const createActivityLogsQuery = `
+        await pool.query(`
             CREATE TABLE IF NOT EXISTS ActivityLogs (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
+                id SERIAL PRIMARY KEY,
+                user_id INT NOT NULL REFERENCES Users(id) ON DELETE CASCADE,
                 action VARCHAR(100) NOT NULL,
-                file_id INT NULL,
+                file_id INT NULL REFERENCES Files(id) ON DELETE SET NULL,
                 filename VARCHAR(255) NULL,
                 details TEXT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE,
-                FOREIGN KEY (file_id) REFERENCES Files(id) ON DELETE SET NULL
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-        `;
+        `);
 
-        await pool.query(createUsersQuery);
-        await pool.query(createFilesQuery);
-        await pool.query(createActivityLogsQuery);
-
+        // Upsert hardcoded admin
         const adminPasswordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
-
         await pool.query(
-            `
-            INSERT INTO Users (name, email, password, is_admin)
-            VALUES (?, ?, ?, 1)
-            ON DUPLICATE KEY UPDATE
-                name = VALUES(name),
-                password = VALUES(password),
-                is_admin = 1
-            `,
+            `INSERT INTO Users (name, email, password, is_admin)
+             VALUES ($1, $2, $3, TRUE)
+             ON CONFLICT (email) DO UPDATE
+             SET name = EXCLUDED.name, password = EXCLUDED.password, is_admin = TRUE`,
             [ADMIN_NAME, ADMIN_EMAIL, adminPasswordHash]
         );
 
-        console.log('Database initialized successfully.');
-
+        console.log('Database and tables initialized successfully.');
     } catch (error) {
         console.error('Error initializing database:', error);
     }

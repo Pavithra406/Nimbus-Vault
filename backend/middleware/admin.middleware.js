@@ -2,8 +2,8 @@ const { pool } = require('../config/db');
 
 const requireAdmin = async (req, res, next) => {
     try {
-        const [rows] = await pool.query(
-            'SELECT is_admin FROM Users WHERE id = ? LIMIT 1',
+        const { rows } = await pool.query(
+            'SELECT is_admin FROM Users WHERE id = $1 LIMIT 1',
             [req.userId]
         );
 

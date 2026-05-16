@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: 'https://nimbus-vault-uqp7.vercel.app/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
 })
   
 function authHeader(token) {

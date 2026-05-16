@@ -13,24 +13,21 @@ exports.register = async (req, res) => {
 
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
-        const [result] = await pool.query(
-            "INSERT INTO Users (name, email, password) VALUES (?, ?, ?)",
+        const { rows: [newUser] } = await pool.query(
+            "INSERT INTO Users (name, email, password) VALUES ($1, $2, $3) RETURNING id",
             [name, email, hashedPassword]
         );
 
-        const [userCountRows] = await pool.query("SELECT COUNT(*) AS totalUsers FROM Users");
-        if (userCountRows[0].totalUsers === 1) {
-            await pool.query("UPDATE Users SET is_admin = 1 WHERE id = ?", [result.insertId]);
+        const { rows: countRows } = await pool.query("SELECT COUNT(*) AS totalusers FROM Users");
+        if (parseInt(countRows[0].totalusers) === 1) {
+            await pool.query("UPDATE Users SET is_admin = TRUE WHERE id = $1", [newUser.id]);
         }
-        await logActivity({
-            userId: result.insertId,
-            action: 'register',
-            details: 'User account created'
-        });
 
-        res.status(201).send({ message: "User registered successfully!", userId: result.insertId });
+        await logActivity({ userId: newUser.id, action: 'register', details: 'User account created' });
+
+        res.status(201).send({ message: "User registered successfully!", userId: newUser.id });
     } catch (error) {
-        if (error.code === 'ER_DUP_ENTRY') {
+        if (error.code === '23505') {
             return res.status(409).send({ message: "Email already exists!" });
         }
         console.error("Register Error:", error);
@@ -46,10 +43,10 @@ exports.login = async (req, res) => {
     }
 
     try {
-        const [rows] = await pool.query("SELECT * FROM Users WHERE email = ?", [email]);
+        const { rows } = await pool.query("SELECT * FROM Users WHERE email = $1", [email]);
 
         if (rows.length === 0) {
-            return res.status(404).send({ message: "User Not found." });
+            return res.status(404).send({ message: "User not found." });
         }
 
         const user = rows[0];
@@ -59,9 +56,7 @@ exports.login = async (req, res) => {
             return res.status(401).send({ message: "Invalid Password!" });
         }
 
-        const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, {
-            expiresIn: 86400 // 24 hours
-        });
+        const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: 86400 });
 
         res.status(200).send({
             id: user.id,
@@ -70,11 +65,8 @@ exports.login = async (req, res) => {
             isAdmin: Boolean(user.is_admin),
             accessToken: token
         });
-        await logActivity({
-            userId: user.id,
-            action: 'login',
-            details: 'User signed in'
-        });
+
+        await logActivity({ userId: user.id, action: 'login', details: 'User signed in' });
     } catch (error) {
         console.error("Login Error:", error);
         res.status(500).send({ message: error.message });
@@ -83,14 +75,12 @@ exports.login = async (req, res) => {
 
 exports.me = async (req, res) => {
     try {
-        const [rows] = await pool.query(
-            "SELECT id, name, email, is_admin, created_at FROM Users WHERE id = ? LIMIT 1",
+        const { rows } = await pool.query(
+            "SELECT id, name, email, is_admin, created_at FROM Users WHERE id = $1 LIMIT 1",
             [req.userId]
         );
 
-        if (!rows.length) {
-            return res.status(404).send({ message: "User not found." });
-        }
+        if (!rows.length) return res.status(404).send({ message: "User not found." });
 
         const user = rows[0];
         res.status(200).send({
@@ -114,26 +104,19 @@ exports.changePassword = async (req, res) => {
     }
 
     try {
-        const [rows] = await pool.query("SELECT * FROM Users WHERE id = ? LIMIT 1", [req.userId]);
+        const { rows } = await pool.query("SELECT * FROM Users WHERE id = $1 LIMIT 1", [req.userId]);
 
-        if (!rows.length) {
-            return res.status(404).send({ message: "User not found." });
-        }
+        if (!rows.length) return res.status(404).send({ message: "User not found." });
 
         const user = rows[0];
-        const isValidPassword = await bcrypt.compare(currentPassword, user.password);
+        const isValid = await bcrypt.compare(currentPassword, user.password);
 
-        if (!isValidPassword) {
-            return res.status(401).send({ message: "Current password is incorrect." });
-        }
+        if (!isValid) return res.status(401).send({ message: "Current password is incorrect." });
 
         const hashedPassword = await bcrypt.hash(newPassword, 10);
-        await pool.query("UPDATE Users SET password = ? WHERE id = ?", [hashedPassword, req.userId]);
-        await logActivity({
-            userId: req.userId,
-            action: 'password_change',
-            details: 'Password updated'
-        });
+        await pool.query("UPDATE Users SET password = $1 WHERE id = $2", [hashedPassword, req.userId]);
+
+        await logActivity({ userId: req.userId, action: 'password_change', details: 'Password updated' });
 
         res.status(200).send({ message: "Password updated successfully." });
     } catch (error) {
