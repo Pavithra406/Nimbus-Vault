@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.10.3",
+    "@supabase/supabase-js": "^2.105.4",
     "autoprefixer": "^10.4.27",
     "axios": "^1.14.0",
     "clsx": "^2.1.1",
