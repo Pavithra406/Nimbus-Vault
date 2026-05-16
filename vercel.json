@@ -4,7 +4,10 @@
     {
       "src": "frontend/package.json",
       "use": "@vercel/static-build",
-      "config": { "distDir": "dist" }
+      "config": {
+        "buildCommand": "npm run build",
+        "distDir": "dist"
+      }
     },
     {
       "src": "api/**/*.js",
@@ -14,10 +17,5 @@
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1" },
     { "src": "/(.*)", "dest": "/frontend/$1" }
-  ],
-  "env": {
-    "DATABASE_URL": "@database_url",
-    "JWT_SECRET": "@jwt_secret",
-    "ENCRYPTION_KEY": "@encryption_key"
-  }
+  ]
 }
