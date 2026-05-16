@@ -2,35 +2,30 @@ const bcrypt = require('bcrypt');
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
-});
+const dbConfig = {
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    connectTimeout: 10000,
+    ssl: {
+        rejectUnauthorized: false
+    }
+};
+
+const pool = mysql.createPool(dbConfig);
 
 const ADMIN_EMAIL = 'pavithrathangaduraitr@gmail.com';
 const ADMIN_PASSWORD = 'pavi1107';
 const ADMIN_NAME = 'Pavithra Admin';
 
-// Helper function to initialize database tables if they don't exist
 const initDB = async () => {
     try {
-        // Create DB if not exists
-        const connection = await mysql.createConnection({
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-});
-        await connection.query(`CREATE DATABASE IF NOT EXISTS \`${process.env.DB_NAME}\`;`);
-        await connection.end();
 
-        // Now connect to the DB and create tables
         const createUsersQuery = `
             CREATE TABLE IF NOT EXISTS Users (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -73,46 +68,23 @@ const initDB = async () => {
         await pool.query(createUsersQuery);
         await pool.query(createFilesQuery);
         await pool.query(createActivityLogsQuery);
-        const [userColumns] = await pool.query(`
-            SELECT COLUMN_NAME
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = ?
-              AND TABLE_NAME = 'Users'
-              AND COLUMN_NAME = 'is_admin'
-        `, [process.env.DB_NAME]);
-        if (!userColumns.length) {
-            await pool.query(`
-                ALTER TABLE Users
-                ADD COLUMN is_admin TINYINT(1) DEFAULT 0
-            `);
-        }
-        await pool.query(`
-            UPDATE Users
-            SET is_admin = 1
-            WHERE id = (
-                SELECT id FROM (
-                    SELECT id FROM Users ORDER BY created_at ASC LIMIT 1
-                ) AS first_user
-            )
-            AND NOT EXISTS (
-                SELECT 1 FROM (
-                    SELECT id FROM Users WHERE is_admin = 1 LIMIT 1
-                ) AS admin_users
-            )
-        `);
+
         const adminPasswordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+
         await pool.query(
             `
-                INSERT INTO Users (name, email, password, is_admin)
-                VALUES (?, ?, ?, 1)
-                ON DUPLICATE KEY UPDATE
-                    name = VALUES(name),
-                    password = VALUES(password),
-                    is_admin = 1
+            INSERT INTO Users (name, email, password, is_admin)
+            VALUES (?, ?, ?, 1)
+            ON DUPLICATE KEY UPDATE
+                name = VALUES(name),
+                password = VALUES(password),
+                is_admin = 1
             `,
             [ADMIN_NAME, ADMIN_EMAIL, adminPasswordHash]
         );
-        console.log('Database and tables initialized successfully.');
+
+        console.log('Database initialized successfully.');
+
     } catch (error) {
         console.error('Error initializing database:', error);
     }
