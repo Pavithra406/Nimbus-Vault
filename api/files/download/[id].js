@@ -14,10 +14,10 @@ module.exports = async (req, res) => {
         if (!rows.length) return res.status(404).json({ message: 'File not found or unauthorized.' });
 
         const file = rows[0];
-        const location = file.aws_url || file.gcp_url || file.firebase_url;
-        if (!location) return res.status(500).json({ message: 'No storage URL found.' });
+        const location = file.aws_url || file.gcp_url || file.firebase_url || null;
 
-        const encryptedBuffer = await downloadWithFailover(location);
+        // Pass file_data (DB fallback) and cloud location to downloadWithFailover
+        const encryptedBuffer = await downloadWithFailover(location, file.file_data);
         const decryptedBuffer = decryptBuffer(encryptedBuffer);
 
         await pool.query(
